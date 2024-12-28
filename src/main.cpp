@@ -1,22 +1,28 @@
 /*
  *  ESP32 Transmitter using ESP-NOW
+ *  Reads key presses from the Serial Monitor on PC:
+ *    - Press 'u' to increment upVal
+ *    - Press 'd' to increment downVal
+ *  Sends upVal and downVal to the Receiver whenever they change.
  */
 
 #include <esp_now.h>
 #include <WiFi.h>
 
-// Structure to send data
+// Define a data structure to send
 typedef struct struct_message {
-  char msg[32];
+  int upVal;
+  int downVal;
 } struct_message;
 
-// Create a struct_message to hold the message we're sending
-struct_message myData;
+// Create a struct_message with explicit initialization
+volatile struct_message myData = {
+    .upVal = 0,
+    .downVal = 0
+};
 
 // MAC address of the receiver (ESP32 #2). Replace with the actual address.
-// - Blue receiver: 08:D1:F9:EC:FB:34
-// - Red transmitter:  B0:A7:32:2E:44:8C
-// Example: "24:6F:28:xx:xx:xx" => {0x24, 0x6F, 0x28, 0xxx, 0xxx, 0xxx}
+// Example: "24:6F:28:xx:xx:xx" => {0x24, 0x6F, 0x28, 0xXX, 0xXX, 0xXX}
 uint8_t peerAddress[] = {0x08, 0xD1, 0xF9, 0xEC, 0xFB, 0x34}; 
 
 // Callback when data is sent
@@ -31,7 +37,7 @@ void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
 void setup() {
   // Initialize Serial Monitor
-  Serial.begin(9600);
+  Serial.begin(115200);
 
   // Set device as a Wi-Fi Station
   WiFi.mode(WIFI_STA);
@@ -42,8 +48,7 @@ void setup() {
     return;
   }
 
-  // Once ESPNow is successfully Init, we will register for Send CB to
-  // get the status of the transmitted packet
+  // Register callback to get the status of transmitted packets
   esp_now_register_send_cb(onDataSent);
 
   // Register peer
@@ -57,21 +62,39 @@ void setup() {
     Serial.println("Failed to add peer");
     return;
   }
+
+  Serial.println("Transmitter ready. Type 'u' or 'd' in the Serial Monitor:");
 }
 
 void loop() {
-  // Prepare data to send
-  strcpy(myData.msg, "Hello from ESP32 #1");
+  // Check if there’s any data available from the Serial Monitor
+  if (Serial.available() > 0) {
+    char c = (char)Serial.read();
+    
+    // Increment upVal if user typed 'u'
+    if (c == 'u' || c == 'U') {
+      myData.upVal++;
+      Serial.print("Incrementing upVal -> ");
+      Serial.println(myData.upVal);
+    }
+    // Increment downVal if user typed 'd'
+    else if (c == 'd' || c == 'D') {
+      myData.downVal--;
+      Serial.print("Incrementing downVal -> ");
+      Serial.println(myData.downVal);
+    }
+    // If the input is not 'u' or 'd', ignore it
+    else {
+      Serial.println("Type 'u' or 'd'");
+      return;
+    }
 
-  // Send message via ESP-NOW
-  esp_err_t result = esp_now_send(peerAddress, (uint8_t *) &myData, sizeof(myData));
-
-  if (result == ESP_OK) {
-    Serial.println("Sent with success");
-  } else {
-    Serial.println("Error sending the data");
+    // Send the updated data to the receiver
+    esp_err_t result = esp_now_send(peerAddress, (uint8_t *)&myData, sizeof(myData));
+    if (result == ESP_OK) {
+      Serial.println("Data sent successfully");
+    } else {
+      Serial.println("Error sending the data");
+    }
   }
-
-  // Wait a bit before sending next message
-  delay(2000);
 }
