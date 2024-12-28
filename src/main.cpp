@@ -7,6 +7,9 @@
 #include <esp_now.h>
 #include <WiFi.h>
 
+#define RIGHT_ARROW 67  // ASCII code for right arrow
+#define LEFT_ARROW 68   // ASCII code for left arrow
+
 // Define a data structure to send
 typedef struct struct_message {
   bool ledState;  // true = ON, false = OFF
@@ -56,36 +59,30 @@ void setup() {
     return;
   }
 
-  Serial.println("Transmitter ready. Type 'u' (ON) or 'd' (OFF):");
+  Serial.println("Transmitter ready. Use RIGHT ARROW (ON) or LEFT ARROW (OFF):");
 }
 
 void loop() {
-  // Check if there’s any data available from the Serial Monitor
   if (Serial.available() > 0) {
     char c = (char)Serial.read();
     
-    // Turn LED ON if user typed 'u'
-    if (c == 'u' || c == 'U') {
+    // Turn LED ON if user pressed RIGHT arrow
+    if (c == RIGHT_ARROW) {
       myData.ledState = true;
       Serial.println("Sending ON signal...");
     }
-    // Turn LED OFF if user typed 'd'
-    else if (c == 'd' || c == 'D') {
+    // Turn LED OFF if user pressed LEFT arrow
+    else if (c == LEFT_ARROW) {
       myData.ledState = false;
       Serial.println("Sending OFF signal...");
     }
     // Ignore other characters
     else {
-      Serial.println("Type 'u' or 'd' to change LED state.");
+      Serial.println("Use RIGHT or LEFT arrow keys to change LED state.");
       return;
     }
 
     // Send the updated data to the receiver
     esp_err_t result = esp_now_send(peerAddress, (uint8_t *)&myData, sizeof(myData));
-    if (result == ESP_OK) {
-      Serial.println("Data sent successfully.");
-    } else {
-      Serial.println("Error sending the data.");
-    }
   }
 }
