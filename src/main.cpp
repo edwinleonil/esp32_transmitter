@@ -1,88 +1,93 @@
 /*
- *  ESP32 Transmitter using ESP-NOW
- *  - Type 'u' in Serial Monitor to send LED ON
- *  - Type 'd' in Serial Monitor to send LED OFF
+ *  TRANSMITTER (ESP32 #1)
+ *  Sends speedVal in [-255..255]:
+ *    Positive => forward
+ *    Negative => backward
+ *    Zero     => stop
+ *  
+ *  Type in Serial Monitor:
+ *    'f' to increase forward speed
+ *    'b' to increase backward speed
+ *    's' to stop
  */
 
 #include <esp_now.h>
 #include <WiFi.h>
 
-#define RIGHT_ARROW 67  // ASCII code for right arrow
-#define LEFT_ARROW 68   // ASCII code for left arrow
-
-// Define a data structure to send
 typedef struct struct_message {
-  bool ledState;  // true = ON, false = OFF
+  int16_t speedVal;  // -255..255
 } struct_message;
 
-// Create a struct_message to hold the data we're sending
-struct_message myData = {false};
+struct_message myData = {0};
 
-// MAC address of the receiver (ESP32 #2). Updated to: 08:D1:F9:EC:FB:34
-uint8_t peerAddress[] = {0x08, 0xD1, 0xF9, 0xEC, 0xFB, 0x34}; 
+// Update with your Receiver's MAC address
+uint8_t peerAddress[] = {0x08, 0xD1, 0xF9, 0xEC, 0xFB, 0x34};
 
-// Callback when data is sent
+const int SPEED_STEP = 25;  // how much to change speed per press
+
 void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  Serial.print("Last Packet Send Status: ");
-  if (status == ESP_NOW_SEND_SUCCESS) {
-    Serial.println("Delivery Success");
-  } else {
-    Serial.println("Delivery Fail");
-  }
+  Serial.print("Send Status: ");
+  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Success" : "Fail");
 }
 
 void setup() {
-  // Initialize Serial Monitor
   Serial.begin(115200);
-
-  // Set device as a Wi-Fi Station
   WiFi.mode(WIFI_STA);
 
-  // Initialize ESP-NOW
   if (esp_now_init() != ESP_OK) {
     Serial.println("Error initializing ESP-NOW");
     return;
   }
-
-  // Register callback to get the status of transmitted packets
   esp_now_register_send_cb(onDataSent);
 
-  // Register peer
   esp_now_peer_info_t peerInfo = {};
   memcpy(peerInfo.peer_addr, peerAddress, 6);
-  peerInfo.channel = 0;  
+  peerInfo.channel = 0;
   peerInfo.encrypt = false;
 
-  // Add peer
-  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
     Serial.println("Failed to add peer");
     return;
   }
 
-  Serial.println("Transmitter ready. Use RIGHT ARROW (ON) or LEFT ARROW (OFF):");
+  Serial.println("Transmitter ready. Commands: 'f' forward, 'b' backward, 's' stop.");
 }
 
 void loop() {
   if (Serial.available() > 0) {
     char c = (char)Serial.read();
-    
-    // Turn LED ON if user pressed RIGHT arrow
-    if (c == RIGHT_ARROW) {
-      myData.ledState = true;
-      Serial.println("Sending ON signal...");
+
+    if (c == 'f' || c == 'F') {
+      // if we're negative, reset to 0 before going forward
+      if (myData.speedVal < 0) myData.speedVal = 0;
+      myData.speedVal += SPEED_STEP;
+      if (myData.speedVal > 255) myData.speedVal = 255; 
+      Serial.print("Forward speed -> ");
+      Serial.println(myData.speedVal);
     }
-    // Turn LED OFF if user pressed LEFT arrow
-    else if (c == LEFT_ARROW) {
-      myData.ledState = false;
-      Serial.println("Sending OFF signal...");
+    else if (c == 'b' || c == 'B') {
+      // if we're positive, reset to 0 before going backward
+      if (myData.speedVal > 0) myData.speedVal = 0;
+      myData.speedVal -= SPEED_STEP;
+      if (myData.speedVal < -255) myData.speedVal = -255;
+      Serial.print("Backward speed -> ");
+      Serial.println(myData.speedVal);
     }
-    // Ignore other characters
+    else if (c == 's' || c == 'S') {
+      myData.speedVal = 0;
+      Serial.println("Stopped (speed=0)");
+    }
     else {
-      Serial.println("Use RIGHT or LEFT arrow keys to change LED state.");
+      Serial.println("Invalid command. Use 'f', 'b', or 's'.");
       return;
     }
 
-    // Send the updated data to the receiver
+    // Send updated speed to the receiver
     esp_err_t result = esp_now_send(peerAddress, (uint8_t *)&myData, sizeof(myData));
+    if (result == ESP_OK) {
+      Serial.println("Data sent successfully.");
+    } else {
+      Serial.println("Error sending data.");
+    }
   }
 }
