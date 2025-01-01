@@ -17,12 +17,14 @@
 // Add these defines at the top with other constants
 #define FORWARD_BTN 12  // Forward button pin
 #define BACKWARD_BTN 13 // Backward button pin
+#define STOP_BTN 14     // Stop button pin
 #define DEBOUNCE_TIME 50 // Debounce time in milliseconds
 
 // Add these variables for button debouncing
 unsigned long lastDebounceTime = 0;
 bool lastForwardState = HIGH;
 bool lastBackwardState = HIGH;
+bool lastStopState = HIGH;
 
 typedef struct struct_message {
   int16_t speedVal;  // -255..255
@@ -33,7 +35,7 @@ struct_message myData = {0};
 // Update with your Receiver's MAC address
 uint8_t peerAddress[] = {0x08, 0xD1, 0xF9, 0xEC, 0xFB, 0x34};
 
-const int SPEED_STEP = 100;  // how much to change speed per press
+const int SPEED_STEP = 10;  // how much to change speed per press
 
 void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   Serial.print("Send Status: ");
@@ -62,6 +64,7 @@ void setup() {
   // Add button pin setup
   pinMode(FORWARD_BTN, INPUT_PULLUP);
   pinMode(BACKWARD_BTN, INPUT_PULLUP);
+  pinMode(STOP_BTN, INPUT_PULLUP);
   
   Serial.println("Transmitter ready. Use buttons to control speed.");
 }
@@ -94,14 +97,16 @@ void loop() {
       lastDebounceTime = millis();
     }
     // Both buttons pressed - stop
-    if (forwardState == LOW && backwardState == LOW) {
+    if (digitalRead(STOP_BTN) == LOW && lastStopState == HIGH) {
       myData.speedVal = 0;
       Serial.println("Stopped (speed=0)");
       lastDebounceTime = millis();
     }
 
-    // If speed was changed, send the update
-    if (forwardState != lastForwardState || backwardState != lastBackwardState) {
+    // If speed was changed, send the update 
+    if (forwardState != lastForwardState || 
+        backwardState != lastBackwardState || 
+        digitalRead(STOP_BTN) != lastStopState) {
       esp_err_t result = esp_now_send(peerAddress, (uint8_t *)&myData, sizeof(myData));
       if (result == ESP_OK) {
         Serial.println("Data sent successfully.");
@@ -114,4 +119,5 @@ void loop() {
   // Save button states for next iteration
   lastForwardState = forwardState;
   lastBackwardState = backwardState;
+   lastStopState = digitalRead(STOP_BTN);
 }
